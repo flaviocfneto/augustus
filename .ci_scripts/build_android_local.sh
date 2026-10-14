@@ -27,7 +27,6 @@ export BUILD_TARGET=android
 CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip"
 NDK_VERSION=$(sed -n 's/.*ndkVersion = "\(.*\)"/\1/p' android/augustus/build.gradle)
 CMAKE_VERSION=$(sed -n 's/.*version = "\(.*\)"/\1/p' android/augustus/build.gradle | head -1)
-COMPILE_SDK=$(sed -n 's/.*compileSdk = \([0-9]*\)/\1/p' android/augustus/build.gradle | head -1)
 
 if ! command -v java > /dev/null; then
     echo "Java 17 or newer is required (e.g. sudo apt install openjdk-17-jdk)" >&2
@@ -46,10 +45,11 @@ if [ ! -x "$SDKMANAGER" ]; then
     rm /tmp/cmdline-tools.zip
 fi
 
-# 2. Platform, NDK and CMake versions pinned in android/augustus/build.gradle
-echo "Installing SDK packages: platforms;android-$COMPILE_SDK ndk;$NDK_VERSION cmake;$CMAKE_VERSION"
+# 2. NDK and CMake versions pinned in android/augustus/build.gradle.
+# Gradle downloads the SDK platform and build tools itself once the licences are accepted.
+echo "Installing SDK packages: ndk;$NDK_VERSION cmake;$CMAKE_VERSION"
 yes | "$SDKMANAGER" --licenses > /dev/null || true
-"$SDKMANAGER" "platform-tools" "platforms;android-$COMPILE_SDK" "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+"$SDKMANAGER" "platform-tools" "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
 
 # 3. SDL sources or AARs, using the CI script
 if [[ "${SDL_VERSION%%.*}" == "3" ]] || ! ls ext/SDL2/SDL2-* > /dev/null 2>&1; then
