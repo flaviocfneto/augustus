@@ -1,12 +1,14 @@
 package com.github.Keriew.augustus;
 
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.util.Log;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -33,10 +35,20 @@ public class FileManager {
         directoryStructureCache.clear();
     }
 
+    // A file:// base is a plain folder (e.g. the default folder on Android TV), not a document tree
+    private static boolean isFileMode() {
+        return ContentResolver.SCHEME_FILE.equals(baseUri.getScheme());
+    }
+
+    private static String getDocumentId(Uri uri) {
+        return isFileMode() ? uri.getPath() : DocumentsContract.getDocumentId(uri);
+    }
+
     static int setBaseUri(Uri newUri) {
         try {
             baseUri = newUri;
-            FileInfo.base = new FileInfo(DocumentsContract.getTreeDocumentId(newUri), null,
+            String baseId = isFileMode() ? newUri.getPath() : DocumentsContract.getTreeDocumentId(newUri);
+            FileInfo.base = new FileInfo(baseId, null,
                 DocumentsContract.Document.MIME_TYPE_DIR, 0, Uri.EMPTY);
             return 1;
         } catch (Exception e) {
@@ -58,6 +70,19 @@ public class FileManager {
             return result;
         }
         result = new HashMap<>();
+        if (isFileMode()) {
+            File[] files = new File(dir.getPath()).listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    String mimeType = file.isDirectory() ? DocumentsContract.Document.MIME_TYPE_DIR
+                        : "application/octet-stream";
+                    result.put(file.getName().toLowerCase(),
+                        new FileInfo(file.getPath(), file.getName(), mimeType, file.lastModified(), dir));
+                }
+            }
+            directoryStructureCache.put(dir, result);
+            return result;
+        }
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(dir, DocumentsContract.getDocumentId(dir));
         String[] columns = new String[] {
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -166,6 +191,9 @@ public class FileManager {
             if (dirList != null) {
                 dirList.remove(fileInfo.getName().toLowerCase());
             }
+            if (isFileMode()) {
+                return new File(fileInfo.getUri().getPath()).delete();
+            }
             return DocumentsContract.deleteDocument(activity.getContentResolver(), fileInfo.getUri());
         } catch (Exception e) {
             Log.e("augustus", "Error in deleteFile: " + e);
@@ -205,14 +233,16 @@ public class FileManager {
                 if (!isWrite) {
                     return 0;
                 }
-                fileUri = DocumentsContract.createDocument(activity.getContentResolver(),
-                    folderInfo.getUri(), "application/octet-stream", fileName);
+                // In file mode, opening the file for writing creates it
+                fileUri = isFileMode() ? Uri.fromFile(new File(folderInfo.getUri().getPath(), fileName))
+                    : DocumentsContract.createDocument(activity.getContentResolver(),
+                        folderInfo.getUri(), "application/octet-stream", fileName);
                 if (fileUri == null) {
                     return 0;
                 }
                 HashMap<String, FileInfo> dirCache = directoryStructureCache.get(folderInfo.getUri());
                 if (dirCache != null) {
-                    fileInfo = new FileInfo(DocumentsContract.getDocumentId(fileUri),
+                    fileInfo = new FileInfo(getDocumentId(fileUri),
                         fileName, "application/octet-stream", System.currentTimeMillis(), folderInfo.getUri());
                     dirCache.put(fileName.toLowerCase(), fileInfo);
                 }
@@ -251,14 +281,20 @@ public class FileManager {
             if (newFolderInfo != null) {
                 return newFolderInfo.isDirectory() ? DIRECTORY_EXISTS : 0;
             }
-            Uri folderUri = DocumentsContract.createDocument(activity.getContentResolver(),
-                folderInfo.getUri(), DocumentsContract.Document.MIME_TYPE_DIR, folderName);
+            Uri folderUri;
+            if (isFileMode()) {
+                File folder = new File(folderInfo.getUri().getPath(), folderName);
+                folderUri = folder.mkdir() ? Uri.fromFile(folder) : null;
+            } else {
+                folderUri = DocumentsContract.createDocument(activity.getContentResolver(),
+                    folderInfo.getUri(), DocumentsContract.Document.MIME_TYPE_DIR, folderName);
+            }
             if (folderUri == null) {
                 return 0;
             }
             HashMap<String, FileInfo> dirCache = directoryStructureCache.get(folderInfo.getUri());
             if (dirCache != null) {
-                newFolderInfo = new FileInfo(DocumentsContract.getDocumentId(folderUri),
+                newFolderInfo = new FileInfo(getDocumentId(folderUri),
                     folderName, DocumentsContract.Document.MIME_TYPE_DIR,
                     System.currentTimeMillis(), folderInfo.getUri());
                 dirCache.put(folderName.toLowerCase(), newFolderInfo);
@@ -307,7 +343,8 @@ public class FileManager {
 
         Uri getUri() {
             if (baseUri != Uri.EMPTY && this.uri == Uri.EMPTY) {
-                this.uri = DocumentsContract.buildDocumentUriUsingTree(baseUri, this.documentId);
+                this.uri = isFileMode() ? Uri.fromFile(new File(this.documentId))
+                    : DocumentsContract.buildDocumentUriUsingTree(baseUri, this.documentId);
             }
             return this.uri;
         }

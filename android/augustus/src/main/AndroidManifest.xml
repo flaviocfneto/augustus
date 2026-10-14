@@ -18,10 +18,18 @@
         android:name="android.hardware.usb.host"
         android:required="false" />
 
+    <!-- Needed on Android 11+ to check whether a folder picker is installed -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="false"
         android:hardwareAccelerated="true"
+        android:hasFragileUserData="true"
         android:icon="@mipmap/augustus"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
