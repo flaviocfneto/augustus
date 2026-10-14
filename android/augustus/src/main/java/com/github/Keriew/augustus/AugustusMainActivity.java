@@ -1,7 +1,12 @@
 package com.github.Keriew.augustus;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.util.Log;
+import android.widget.Toast;
+
+import java.io.File;
 
 import org.libsdl.app.SDLActivity;
 
@@ -35,7 +40,31 @@ public class AugustusMainActivity extends SDLActivity {
 
     @SuppressWarnings("unused")
     public void showDirectorySelection(boolean again) {
+        if (getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK) || !hasFolderPicker()) {
+            useDefaultDirectory();
+            return;
+        }
         startActivityForResult(DirectorySelectionActivity.newIntent(this, again), GET_FOLDER_RESULT);
+    }
+
+    private boolean hasFolderPicker() {
+        return new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).resolveActivity(getPackageManager()) != null;
+    }
+
+    // Android TV usually has no folder picker, so use the app's own external folder,
+    // which needs no permissions: /sdcard/Android/data/<package>/files
+    private void useDefaultDirectory() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) {
+            FileManager.setBaseUri(Uri.EMPTY);
+        } else {
+            dir.mkdirs();
+            FileManager.setBaseUri(Uri.fromFile(dir));
+            String message = "Copy the Caesar 3 files to " + dir.getAbsolutePath();
+            Log.i("augustus", message);
+            runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+        }
+        gotDirectory();
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
