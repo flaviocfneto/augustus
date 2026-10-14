@@ -54,7 +54,9 @@ echo "Installing SDK packages: ndk;$NDK_VERSION cmake;$CMAKE_VERSION"
 yes | "$SDKMANAGER" --licenses > /dev/null || true
 "$SDKMANAGER" "platform-tools" "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
 
-# 3. SDL sources or AARs, using the CI script
+# 3. Git submodules (CI checks them out with "submodules: recursive"), then SDL sources or
+# AARs, using the CI script
+git submodule update --init --recursive
 if [[ "${SDL_VERSION%%.*}" == "3" ]] || ! ls ext/SDL2/SDL2-* > /dev/null 2>&1; then
     ./.ci_scripts/install_dependencies.sh
 fi
