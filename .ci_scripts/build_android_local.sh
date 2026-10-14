@@ -7,6 +7,9 @@
 #   ANDROID_HOME       Android SDK location (default: ~/android-sdk)
 #   SDL_VERSION        2.x builds SDL from source; 3.x uses prebuilt AARs (default: 2.32.10, as in CI)
 #   SDL_MIXER_VERSION  (default: 2.8.2, or 3.2.2 when SDL_VERSION is 3.x)
+#   MAVEN_CENTRAL_MIRROR  Fetch Maven Central artefacts from this URL instead, e.g. if
+#                         repo.maven.apache.org answers "429 Too Many Requests":
+#                         https://maven-central.storage-download.googleapis.com/maven2/
 #
 # Output: build/augustus-debug.apk (debug-signed, installable with "adb install")
 
@@ -58,8 +61,30 @@ fi
 
 # 4. Build the debug APK
 mkdir -p build
+GRADLE_ARGS=()
+if [ -n "$MAVEN_CENTRAL_MIRROR" ]; then
+    INIT_SCRIPT="$(mktemp --suffix=.gradle)"
+    cat > "$INIT_SCRIPT" << GRADLE
+def redirect = { RepositoryHandler repos ->
+    repos.withType(MavenArtifactRepository).configureEach { repo ->
+        if (repo.url.toString().startsWith('https://repo.maven.apache.org/maven2')) {
+            repo.url = '$MAVEN_CENTRAL_MIRROR'
+        }
+    }
+}
+beforeSettings { settings ->
+    redirect(settings.pluginManagement.repositories)
+    redirect(settings.buildscript.repositories)
+}
+allprojects {
+    redirect(buildscript.repositories)
+    redirect(repositories)
+}
+GRADLE
+    GRADLE_ARGS+=(--init-script "$INIT_SCRIPT")
+fi
 cd android
-TERM=dumb ./gradlew assembleDebug
+TERM=dumb ./gradlew "${GRADLE_ARGS[@]}" assembleDebug
 cd ..
 cp android/augustus/build/outputs/apk/debug/augustus-debug.apk build/augustus-debug.apk
 echo "APK ready: $(pwd)/build/augustus-debug.apk"
